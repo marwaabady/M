@@ -1,70 +1,141 @@
-<div class="max-w-6xl mx-auto bg-white rounded-xl shadow-md overflow-hidden p-6">
-    <!-- Header -->
-    <div class="flex flex-col md:flex-row justify-between items-center border-b pb-4 mb-6">
-        <div>
-            <h1 class="text-2xl font-bold text-emerald-700">لوحة بيانات الترع والمشروعات</h1>
-            <p class="text-sm text-gray-500 mt-1">عرض وتنظيم البيانات بشكل جدول تفاعلي شبيه بالإكسيل</p>
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>عارض بيانات الترع - إكسيل</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- مكتبة لقراءة ملفات الإكسيل -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Cairo', sans-serif; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #d1d5db; padding: 8px 12px; text-align: right; white-space: nowrap; }
+        th { background-color: #059669; color: white; position: sticky; top: 0; }
+        tr:nth-child(even) { background-color: #f9fafb; }
+        tr:hover { background-color: #ecfdf5; }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 min-h-screen p-4 md:p-6">
+
+    <div class="max-w-7xl mx-auto bg-white rounded-xl shadow-lg p-6">
+        <div class="border-b pb-4 mb-6 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-emerald-700">نظام عرض بيانات الترع (إكسيل تفاعلي)</h1>
+                <p class="text-sm text-gray-500 mt-1">اختر الملف لعرض بياناته مباشرة من مستودع GitHub</p>
+            </div>
+            
+            <!-- أزرار اختيار الملفات -->
+            <div class="flex flex-wrap gap-2" id="fileButtons">
+                <button onclick="loadExcel('(رى المنوفية) ترع.xlsx', this)" class="file-btn bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-semibold shadow hover:bg-emerald-700 transition">ترع (رى المنوفية)</button>
+                <button onclick="loadExcel('ترع السلام.xlsx', this)" class="file-btn bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-emerald-600 hover:text-white transition">ترع السلام</button>
+                <button onclick="loadExcel('ترع الغربية.xlsx', this)" class="file-btn bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-emerald-600 hover:text-white transition">ترع الغربية</button>
+                <button onclick="loadExcel('ترع زفتى.xlsx', this)" class="file-btn bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-emerald-600 hover:text-white transition">ترع زفتى</button>
+            </div>
         </div>
-        <div class="mt-4 md:mt-0">
-            <span class="bg-emerald-100 text-emerald-800 text-xs font-semibold px-3 py-1.5 rounded-full">حالة النظام: نشط</span>
+
+        <!-- شريط البحث واختيار الشيت -->
+        <div class="flex flex-col md:flex-row justify-between items-center gap-4 mb-4 bg-gray-50 p-3 rounded-lg border">
+            <div class="flex items-center gap-2 w-full md:w-auto">
+                <label class="text-sm font-semibold text-gray-700">ورقة العمل (Sheet):</label>
+                <select id="sheetSelect" onchange="renderCurrentSheet()" class="border border-gray-300 rounded-md px-3 py-1.5 text-sm bg-white focus:outline-none focus:border-emerald-500">
+                    <option>جاري التحميل...</option>
+                </select>
+            </div>
+
+            <div class="w-full md:w-72">
+                <input type="text" id="searchInput" onkeyup="filterTable()" placeholder="ابحث داخل الجدول..." class="w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:border-emerald-500">
+            </div>
+        </div>
+
+        <!-- منطقة عرض الجدول -->
+        <div id="statusMessage" class="text-center py-8 text-emerald-600 font-semibold">جاري تحميل البيانات...</div>
+        
+        <div class="overflow-x-auto max-h-[600px] border border-gray-300 rounded-lg shadow-inner hidden" id="tableContainer">
+            <table id="excelTable" class="text-sm"></table>
         </div>
     </div>
 
-    <!-- Excel-like Table -->
-    <div class="overflow-x-auto border border-gray-200 rounded-lg shadow-sm">
-        <table class="w-full text-right border-collapse">
-            <thead>
-                <tr class="bg-emerald-600 text-white text-sm font-semibold">
-                    <th class="p-3 border-l border-emerald-500">#</th>
-                    <th class="p-3 border-l border-emerald-500">اسم الملف / الترعة</th>
-                    <th class="p-3 border-l border-emerald-500">التصنيف</th>
-                    <th class="p-3 border-l border-emerald-500">الحالة</th>
-                    <th class="p-3">الإجراءات</th>
-                </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-200 text-sm">
-                <tr class="hover:bg-gray-50 transition">
-                    <td class="p-3 font-medium text-gray-600">1</td>
-                    <td class="p-3 font-bold text-gray-900">(رى المنوفية) ترع.xlsx</td>
-                    <td class="p-3 text-gray-600">إدارة مياه وموارد</td>
-                    <td class="p-3"><span class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs">متاح</span></td>
-                    <td class="p-3">
-                        <button onclick="alert('جارٍ تحميل الملف...')" class="bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1 rounded text-xs transition">تحميل الملف</button>
-                    </td>
-                </tr>
-                <tr class="hover:bg-gray-50 transition bg-gray-50/50">
-                    <td class="p-3 font-medium text-gray-600">2</td>
-                    <td class="p-3 font-bold text-gray-900">ترع السلام.xlsx</td>
-                    <td class="p-3 text-gray-600">إدارة مياه وموارد</td>
-                    <td class="p-3"><span class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs">متاح</span></td>
-                    <td class="p-3">
-                        <button onclick="alert('جارٍ تحميل الملف...')" class="bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1 rounded text-xs transition">تحميل الملف</button>
-                    </td>
-                </tr>
-                <tr class="hover:bg-gray-50 transition">
-                    <td class="p-3 font-medium text-gray-600">3</td>
-                    <td class="p-3 font-bold text-gray-900">ترع الغربية.xlsx</td>
-                    <td class="p-3 text-gray-600">إدارة مياه وموارد</td>
-                    <td class="p-3"><span class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs">متاح</span></td>
-                    <td class="p-3">
-                        <button onclick="alert('جارٍ تحميل الملف...')" class="bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1 rounded text-xs transition">تحميل الملف</button>
-                    </td>
-                </tr>
-                <tr class="hover:bg-gray-50 transition bg-gray-50/50">
-                    <td class="p-3 font-medium text-gray-600">4</td>
-                    <td class="p-3 font-bold text-gray-900">ترع زفتى.xlsx</td>
-                    <td class="p-3 text-gray-600">إدارة مياه وموارد</td>
-                    <td class="p-3"><span class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs">متاح</span></td>
-                    <td class="p-3">
-                        <button onclick="alert('جارٍ تحميل الملف...')" class="bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1 rounded text-xs transition">تحميل الملف</button>
-                    </td>
-                </tr>
-            </tbody>
-        </table>
-    </div>
+    <script>
+        let currentWorkbook = null;
 
-    <!-- Footer Note -->
-    <div class="mt-6 text-center text-xs text-gray-400">
-        تم تصميم هذه الصفحة خصيصاً لعرض وتنظيم البيانات بشكل احترافي على GitHub Pages.
-    </div>
-</div>
+        // تحميل أول ملف تلقائياً عند فتح الصفحة
+        window.onload = () => {
+            const firstBtn = document.querySelector('.file-btn');
+            loadExcel('(رى المنوفية) ترع.xlsx', firstBtn);
+        };
+
+        async function loadExcel(fileName, btnElement) {
+            // تحديث شكل الأزرار
+            document.querySelectorAll('.file-btn').forEach(btn => {
+                btn.classList.remove('bg-emerald-600', 'text-white');
+                btn.classList.add('bg-gray-200', 'text-gray-700');
+            });
+            if(btnElement) {
+                btnElement.classList.remove('bg-gray-200', 'text-gray-700');
+                btnElement.classList.add('bg-emerald-600', 'text-white');
+            }
+
+            const status = document.getElementById('statusMessage');
+            const container = document.getElementById('tableContainer');
+            status.classList.remove('hidden');
+            container.classList.add('hidden');
+            status.innerText = `جاري قراءة ملف: ${fileName} ...`;
+
+            try {
+                // جلب الملف من نفس مسار الموقع على GitHub
+                const response = await fetch(encodeURI(fileName));
+                if (!response.ok) throw new Error('لم يتم العثور على الملف');
+                
+                const arrayBuffer = await response.arrayBuffer();
+                currentWorkbook = XLSX.read(arrayBuffer, { type: 'array' });
+
+                // تعبئة قائمة الأوراق (Sheets)
+                const sheetSelect = document.getElementById('sheetSelect');
+                sheetSelect.innerHTML = '';
+                currentWorkbook.SheetNames.forEach(name => {
+                    const option = document.createElement('option');
+                    option.value = name;
+                    option.text = name;
+                    sheetSelect.appendChild(option);
+                });
+
+                renderCurrentSheet();
+            } catch (error) {
+                status.innerHTML = `<span class="text-red-600">حدث خطأ أثناء فتح الملف (${fileName}). تأكدي من رفع الكود على GitHub بشكل صحيح.</span>`;
+                console.error(error);
+            }
+        }
+
+        function renderCurrentSheet() {
+            if (!currentWorkbook) return;
+            const sheetName = document.getElementById('sheetSelect').value;
+            const worksheet = currentWorkbook.Sheets[sheetName];
+            
+            // تحويل بيانات الإكسيل إلى جدول HTML
+            const htmlTable = XLSX.utils.sheet_to_html(worksheet, { id: "excelTable" });
+            
+            const container = document.getElementById('tableContainer');
+            const status = document.getElementById('statusMessage');
+            
+            container.innerHTML = htmlTable;
+            status.classList.add('hidden');
+            container.classList.remove('hidden');
+            document.getElementById('searchInput').value = '';
+        }
+
+        function filterTable() {
+            const input = document.getElementById('searchInput').value.toLowerCase();
+            const table = document.getElementById('excelTable');
+            if (!table) return;
+            const rows = table.getElementsByTagName('tr');
+
+            for (let i = 1; i < rows.length; i++) {
+                const rowText = rows[i].textContent.toLowerCase();
+                rows[i].style.display = rowText.includes(input) ? '' : 'none';
+            }
+        }
+    </script>
+</body>
+</html>
