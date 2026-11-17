@@ -54,27 +54,36 @@
         <!-- شريط البحث واختيار الشيت -->
         <div class="flex flex-col md:flex-row justify-between items-center gap-4 mb-4 bg-gray-50 p-3 rounded-lg border">
             <div class="flex items-center gap-2 w-full md:w-auto">
-                <label class="text-sm font-semibold text-gray-700">ورقة العمل (Sheet):</label>
-                <select id="sheetSelect" onchange="renderCurrentSheet()" class="border border-gray-300 rounded-md px-3 py-1.5 text-sm bg-white focus:outline-none focus:border-emerald-500">
-                    <option>جاري التحميل...</option>
-                </select>
-            </div>
-
-            <div class="w-full md:w-72">
-                <input type="text" id="searchInput" onkeyup="filterTable()" placeholder="ابحث داخل الجدول..." class="w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:border-emerald-500">
+                <input type="text" id="searchInput" onkeyup="filterData()" placeholder="ابحث في جميع البيانات..." class="w-full md:w-64 border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:border-emerald-500">
+                <button id="exportBtn" onclick="exportToExcel()" class="hidden bg-blue-600 text-white px-3 py-1.5 rounded-md text-sm font-semibold hover:bg-blue-700 transition whitespace-nowrap">تحميل إكسيل ⬇️</button>
             </div>
         </div>
 
         <!-- منطقة عرض الجدول -->
         <div id="statusMessage" class="text-center py-8 text-emerald-600 font-semibold">جاري تحميل البيانات...</div>
         
-        <div class="overflow-x-auto max-h-[600px] border border-gray-300 rounded-lg shadow-inner hidden" id="tableContainer">
+        <div class="overflow-x-auto max-h-[550px] border border-gray-300 rounded-lg shadow-inner hidden" id="tableContainer">
             <table id="excelTable" class="text-sm"></table>
+        </div>
+
+        <!-- أزرار التنقل بين الصفحات لتخفيف الحمل على المتصفح -->
+        <div id="paginationControls" class="hidden flex flex-col sm:flex-row justify-between items-center gap-3 mt-4 bg-gray-50 p-3 rounded-lg border text-sm">
+            <div id="pageInfo" class="font-semibold text-gray-700"></div>
+            <div class="flex items-center gap-2">
+                <button onclick="changePage(-1)" id="prevBtn" class="bg-white border border-gray-300 px-3 py-1 rounded hover:bg-gray-100 disabled:opacity-50">السابق</button>
+                <button onclick="changePage(1)" id="nextBtn" class="bg-white border border-gray-300 px-3 py-1 rounded hover:bg-gray-100 disabled:opacity-50">التالي</button>
+            </div>
         </div>
     </div>
 
     <script>
         let currentWorkbook = null;
+        let allRowsData = []; // لتخزين كل البيانات في الذاكرة الخفيفة
+        let filteredRowsData = []; // البيانات بعد البحث
+        let tableHeaders = [];
+        let currentPage = 1;
+        const rowsPerPage = 100; // عرض 100 صف فقط في المرة الواحدة لمنع تهنيج المتصفح
+
         const allFiles = [
             'ترع (رى المنوفية).xlsx',
             'ترع السلام.xlsx',
@@ -82,7 +91,6 @@
             'ترع زفتى.xlsx'
         ];
 
-        // تحميل الشيت المجمع تلقائياً عند فتح الصفحة
         window.onload = () => {
             const firstBtn = document.querySelector('.file-btn');
             loadMergedExcel(firstBtn);
@@ -99,23 +107,25 @@
             }
         }
 
-        // دالة لدمج جميع الملفات في جدول واحد
+        // دالة لدمج جميع الملفات في جدول واحد بدون استهلاك الذاكرة
         async function loadMergedExcel(btnElement) {
             updateActiveButton(btnElement);
             const status = document.getElementById('statusMessage');
             const container = document.getElementById('tableContainer');
             const sheetBox = document.getElementById('sheetSelectorBox');
             const exportBtn = document.getElementById('exportBtn');
+            const pagination = document.getElementById('paginationControls');
 
             status.classList.remove('hidden');
             container.classList.add('hidden');
             sheetBox.classList.add('hidden');
             exportBtn.classList.add('hidden');
-            status.innerText = 'جاري تجميع البيانات من جميع الملفات الأربعة...';
+            pagination.classList.add('hidden');
+            status.innerText = 'جاري تجميع البيانات من الملفات الأربعة...';
 
             try {
-                let mergedData = [];
-                let headersAdded = false;
+                tableHeaders = [];
+                allRowsData = [];
 
                 for (const fileName of allFiles) {
                     const response = await fetch(encodeURI(fileName));
@@ -124,30 +134,27 @@
                     const arrayBuffer = await response.arrayBuffer();
                     const wb = XLSX.read(arrayBuffer, { type: 'array' });
                     const firstSheet = wb.Sheets[wb.SheetNames[0]];
-                    const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+                    const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: "" });
 
                     if (rows.length > 0) {
                         const cleanName = fileName.replace('.xlsx', '');
-                        if (!headersAdded) {
-                            mergedData.push(['المصدر / المنطقة', ...rows[0]]);
-                            headersAdded = true;
+                        if (tableHeaders.length === 0) {
+                            tableHeaders = ['المصدر / المنطقة', ...rows[0]];
                         }
                         for (let i = 1; i < rows.length; i++) {
-                            if (rows[i].length > 0) {
-                                mergedData.push([cleanName, ...rows[i]]);
+                            // تجاهل الصفوف الفارغة تماماً
+                            if (rows[i].some(cell => cell !== "" && cell !== null)) {
+                                allRowsData.push([cleanName, ...rows[i]]);
                             }
                         }
                     }
                 }
 
-                const newSheet = XLSX.utils.aoa_to_sheet(mergedData);
-                const htmlTable = XLSX.utils.sheet_to_html(newSheet, { id: "excelTable" });
-                
-                container.innerHTML = htmlTable;
-                status.classList.add('hidden');
-                container.classList.remove('hidden');
-                exportBtn.classList.remove('hidden');
+                filteredRowsData = [...allRowsData];
+                currentPage = 1;
                 document.getElementById('searchInput').value = '';
+                renderPaginatedTable();
+                exportBtn.classList.remove('hidden');
             } catch (error) {
                 status.innerHTML = `<span class="text-red-600">حدث خطأ أثناء تجميع الملفات.</span>`;
                 console.error(error);
@@ -161,11 +168,13 @@
             const container = document.getElementById('tableContainer');
             const sheetBox = document.getElementById('sheetSelectorBox');
             const exportBtn = document.getElementById('exportBtn');
+            const pagination = document.getElementById('paginationControls');
 
             status.classList.remove('hidden');
             container.classList.add('hidden');
             sheetBox.classList.remove('hidden');
             exportBtn.classList.add('hidden');
+            pagination.classList.add('hidden');
             status.innerText = `جاري قراءة ملف: ${fileName} ...`;
 
             try {
@@ -185,6 +194,7 @@
                 });
 
                 renderCurrentSheet();
+                exportBtn.classList.remove('hidden');
             } catch (error) {
                 status.innerHTML = `<span class="text-red-600">حدث خطأ أثناء فتح الملف (${fileName}).</span>`;
                 console.error(error);
@@ -195,36 +205,88 @@
             if (!currentWorkbook) return;
             const sheetName = document.getElementById('sheetSelect').value;
             const worksheet = currentWorkbook.Sheets[sheetName];
-            
-            // تحويل بيانات الإكسيل إلى جدول HTML
-            const htmlTable = XLSX.utils.sheet_to_html(worksheet, { id: "excelTable" });
-            
-            const container = document.getElementById('tableContainer');
-            const status = document.getElementById('statusMessage');
-            
-            container.innerHTML = htmlTable;
-            status.classList.add('hidden');
-            container.classList.remove('hidden');
+            const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
+
+            tableHeaders = rows.length > 0 ? rows[0] : [];
+            allRowsData = [];
+            for (let i = 1; i < rows.length; i++) {
+                if (rows[i].some(cell => cell !== "" && cell !== null)) {
+                    allRowsData.push(rows[i]);
+                }
+            }
+
+            filteredRowsData = [...allRowsData];
+            currentPage = 1;
             document.getElementById('searchInput').value = '';
+            renderPaginatedTable();
         }
 
-        function filterTable() {
-            const input = document.getElementById('searchInput').value.toLowerCase();
+        // رسم 100 صف فقط في كل صفحة لحماية الذاكرة
+        function renderPaginatedTable() {
             const table = document.getElementById('excelTable');
-            if (!table) return;
-            const rows = table.getElementsByTagName('tr');
+            const container = document.getElementById('tableContainer');
+            const status = document.getElementById('statusMessage');
+            const pagination = document.getElementById('paginationControls');
 
-            for (let i = 1; i < rows.length; i++) {
-                const rowText = rows[i].textContent.toLowerCase();
-                rows[i].style.display = rowText.includes(input) ? '' : 'none';
+            let html = '<thead><tr>';
+            tableHeaders.forEach(h => {
+                html += `<th>${h !== undefined ? h : ''}</th>`;
+            });
+            html += '</tr></thead><tbody>';
+
+            const startIndex = (currentPage - 1) * rowsPerPage;
+            const endIndex = Math.min(startIndex + rowsPerPage, filteredRowsData.length);
+
+            for (let i = startIndex; i < endIndex; i++) {
+                html += '<tr>';
+                for (let j = 0; j < tableHeaders.length; j++) {
+                    const val = filteredRowsData[i][j];
+                    html += `<td>${val !== undefined ? val : ''}</td>`;
+                }
+                html += '</tr>';
+            }
+            html += '</tbody>';
+
+            table.innerHTML = html;
+            status.classList.add('hidden');
+            container.classList.remove('hidden');
+            pagination.classList.remove('hidden');
+
+            const totalPages = Math.ceil(filteredRowsData.length / rowsPerPage) || 1;
+            document.getElementById('pageInfo').innerText = `صفحة ${currentPage} من ${totalPages} (إجمالي السجلات: ${filteredRowsData.length})`;
+            document.getElementById('prevBtn').disabled = currentPage === 1;
+            document.getElementById('nextBtn').disabled = currentPage === totalPages;
+        }
+
+        function changePage(step) {
+            const totalPages = Math.ceil(filteredRowsData.length / rowsPerPage) || 1;
+            const newPage = currentPage + step;
+            if (newPage >= 1 && newPage <= totalPages) {
+                currentPage = newPage;
+                renderPaginatedTable();
+                document.getElementById('tableContainer').scrollTop = 0;
             }
         }
 
-        // تحميل الجدول المعروض كملف إكسيل
-        function exportTableToExcel() {
-            const table = document.getElementById('excelTable');
-            if (!table) return;
-            const wb = XLSX.utils.table_to_book(table, { sheet: "البيانات المجمعة" });
+        function filterData() {
+            const query = document.getElementById('searchInput').value.toLowerCase();
+            if (!query) {
+                filteredRowsData = [...allRowsData];
+            } else {
+                filteredRowsData = allRowsData.filter(row => 
+                    row.some(cell => String(cell).toLowerCase().includes(query))
+                );
+            }
+            currentPage = 1;
+            renderPaginatedTable();
+        }
+
+        // تحميل كل البيانات المفلترة كملف إكسيل
+        function exportToExcel() {
+            const exportArray = [tableHeaders, ...filteredRowsData];
+            const ws = XLSX.utils.aoa_to_sheet(exportArray);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "البيانات");
             XLSX.writeFile(wb, "بيانات_الترع_المجمعة.xlsx");
         }
     </script>
