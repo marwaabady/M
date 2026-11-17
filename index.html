@@ -28,10 +28,26 @@
             
             <!-- أزرار اختيار الملفات -->
             <div class="flex flex-wrap gap-2" id="fileButtons">
-                <button onclick="loadExcel('(رى المنوفية) ترع.xlsx', this)" class="file-btn bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-semibold shadow hover:bg-emerald-700 transition">ترع (رى المنوفية)</button>
+                <button onclick="loadMergedExcel(this)" class="file-btn bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow hover:bg-emerald-700 transition">📊 عرض الكل (ملف مجمع)</button>
+                <button onclick="loadExcel('ترع (رى المنوفية).xlsx', this)" class="file-btn bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-emerald-600 hover:text-white transition">ترع (رى المنوفية)</button>
                 <button onclick="loadExcel('ترع السلام.xlsx', this)" class="file-btn bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-emerald-600 hover:text-white transition">ترع السلام</button>
                 <button onclick="loadExcel('ترع الغربية.xlsx', this)" class="file-btn bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-emerald-600 hover:text-white transition">ترع الغربية</button>
                 <button onclick="loadExcel('ترع زفتى.xlsx', this)" class="file-btn bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-emerald-600 hover:text-white transition">ترع زفتى</button>
+            </div>
+        </div>
+
+        <!-- شريط البحث واختيار الشيت -->
+        <div class="flex flex-col md:flex-row justify-between items-center gap-4 mb-4 bg-gray-50 p-3 rounded-lg border">
+            <div class="flex items-center gap-2 w-full md:w-auto" id="sheetSelectorBox">
+                <label class="text-sm font-semibold text-gray-700">ورقة العمل (Sheet):</label>
+                <select id="sheetSelect" onchange="renderCurrentSheet()" class="border border-gray-300 rounded-md px-3 py-1.5 text-sm bg-white focus:outline-none focus:border-emerald-500">
+                    <option>جاري التحميل...</option>
+                </select>
+            </div>
+
+            <div class="flex items-center gap-2 w-full md:w-auto">
+                <input type="text" id="searchInput" onkeyup="filterTable()" placeholder="ابحث داخل الجدول..." class="w-full md:w-64 border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:border-emerald-500">
+                <button id="exportBtn" onclick="exportTableToExcel()" class="hidden bg-blue-600 text-white px-3 py-1.5 rounded-md text-sm font-semibold hover:bg-blue-700 transition whitespace-nowrap">تحميل إكسيل ⬇️</button>
             </div>
         </div>
 
@@ -59,15 +75,20 @@
 
     <script>
         let currentWorkbook = null;
+        const allFiles = [
+            'ترع (رى المنوفية).xlsx',
+            'ترع السلام.xlsx',
+            'ترع الغربية.xlsx',
+            'ترع زفتى.xlsx'
+        ];
 
-        // تحميل أول ملف تلقائياً عند فتح الصفحة
+        // تحميل الشيت المجمع تلقائياً عند فتح الصفحة
         window.onload = () => {
             const firstBtn = document.querySelector('.file-btn');
-            loadExcel('(رى المنوفية) ترع.xlsx', firstBtn);
+            loadMergedExcel(firstBtn);
         };
 
-        async function loadExcel(fileName, btnElement) {
-            // تحديث شكل الأزرار
+        function updateActiveButton(btnElement) {
             document.querySelectorAll('.file-btn').forEach(btn => {
                 btn.classList.remove('bg-emerald-600', 'text-white');
                 btn.classList.add('bg-gray-200', 'text-gray-700');
@@ -76,22 +97,84 @@
                 btnElement.classList.remove('bg-gray-200', 'text-gray-700');
                 btnElement.classList.add('bg-emerald-600', 'text-white');
             }
+        }
+
+        // دالة لدمج جميع الملفات في جدول واحد
+        async function loadMergedExcel(btnElement) {
+            updateActiveButton(btnElement);
+            const status = document.getElementById('statusMessage');
+            const container = document.getElementById('tableContainer');
+            const sheetBox = document.getElementById('sheetSelectorBox');
+            const exportBtn = document.getElementById('exportBtn');
+
+            status.classList.remove('hidden');
+            container.classList.add('hidden');
+            sheetBox.classList.add('hidden');
+            exportBtn.classList.add('hidden');
+            status.innerText = 'جاري تجميع البيانات من جميع الملفات الأربعة...';
+
+            try {
+                let mergedData = [];
+                let headersAdded = false;
+
+                for (const fileName of allFiles) {
+                    const response = await fetch(encodeURI(fileName));
+                    if (!response.ok) continue;
+                    
+                    const arrayBuffer = await response.arrayBuffer();
+                    const wb = XLSX.read(arrayBuffer, { type: 'array' });
+                    const firstSheet = wb.Sheets[wb.SheetNames[0]];
+                    const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+
+                    if (rows.length > 0) {
+                        const cleanName = fileName.replace('.xlsx', '');
+                        if (!headersAdded) {
+                            mergedData.push(['المصدر / المنطقة', ...rows[0]]);
+                            headersAdded = true;
+                        }
+                        for (let i = 1; i < rows.length; i++) {
+                            if (rows[i].length > 0) {
+                                mergedData.push([cleanName, ...rows[i]]);
+                            }
+                        }
+                    }
+                }
+
+                const newSheet = XLSX.utils.aoa_to_sheet(mergedData);
+                const htmlTable = XLSX.utils.sheet_to_html(newSheet, { id: "excelTable" });
+                
+                container.innerHTML = htmlTable;
+                status.classList.add('hidden');
+                container.classList.remove('hidden');
+                exportBtn.classList.remove('hidden');
+                document.getElementById('searchInput').value = '';
+            } catch (error) {
+                status.innerHTML = `<span class="text-red-600">حدث خطأ أثناء تجميع الملفات.</span>`;
+                console.error(error);
+            }
+        }
+
+        async function loadExcel(fileName, btnElement) {
+            updateActiveButton(btnElement);
 
             const status = document.getElementById('statusMessage');
             const container = document.getElementById('tableContainer');
+            const sheetBox = document.getElementById('sheetSelectorBox');
+            const exportBtn = document.getElementById('exportBtn');
+
             status.classList.remove('hidden');
             container.classList.add('hidden');
+            sheetBox.classList.remove('hidden');
+            exportBtn.classList.add('hidden');
             status.innerText = `جاري قراءة ملف: ${fileName} ...`;
 
             try {
-                // جلب الملف من نفس مسار الموقع على GitHub
                 const response = await fetch(encodeURI(fileName));
                 if (!response.ok) throw new Error('لم يتم العثور على الملف');
                 
                 const arrayBuffer = await response.arrayBuffer();
                 currentWorkbook = XLSX.read(arrayBuffer, { type: 'array' });
 
-                // تعبئة قائمة الأوراق (Sheets)
                 const sheetSelect = document.getElementById('sheetSelect');
                 sheetSelect.innerHTML = '';
                 currentWorkbook.SheetNames.forEach(name => {
@@ -103,7 +186,7 @@
 
                 renderCurrentSheet();
             } catch (error) {
-                status.innerHTML = `<span class="text-red-600">حدث خطأ أثناء فتح الملف (${fileName}). تأكدي من رفع الكود على GitHub بشكل صحيح.</span>`;
+                status.innerHTML = `<span class="text-red-600">حدث خطأ أثناء فتح الملف (${fileName}).</span>`;
                 console.error(error);
             }
         }
@@ -135,6 +218,14 @@
                 const rowText = rows[i].textContent.toLowerCase();
                 rows[i].style.display = rowText.includes(input) ? '' : 'none';
             }
+        }
+
+        // تحميل الجدول المعروض كملف إكسيل
+        function exportTableToExcel() {
+            const table = document.getElementById('excelTable');
+            if (!table) return;
+            const wb = XLSX.utils.table_to_book(table, { sheet: "البيانات المجمعة" });
+            XLSX.writeFile(wb, "بيانات_الترع_المجمعة.xlsx");
         }
     </script>
 </body>
